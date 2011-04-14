@@ -16,4 +16,14 @@ For information on how to use the script, run
 I've included a rudimentary sysv rc file that is known to work on CentOS.
 You can edit the options section of this file to configure the script.
 
+REQUIRED MODULES
+================
+HTTP::Proxy
+HTTP::Response
+HTTP::Headers
+GetOpt::Long
+URI::Escape
+File::Slurp
+
+
 Joe Topjian, joe@terrarum.net, http://terrarum.net
