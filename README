@@ -25,5 +25,11 @@ GetOpt::Long
 URI::Escape
 File::Slurp
 
+NOTE
+====
+It should be important to note that development of automirror has so far been
+geared toward CentOS environments. That's not to say it won't work in other
+environments, but it just has not been tested.
+
 
 Joe Topjian, joe@terrarum.net, http://terrarum.net
