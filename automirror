@@ -1,0 +1,261 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+# HTTP::Proxy stuff
+use HTTP::Proxy qw(:log);
+use HTTP::Proxy::HeaderFilter::simple;
+use HTTP::Proxy::BodyFilter::save;
+use HTTP::Proxy::BodyFilter::simple;
+use HTTP::Response;
+use HTTP::Headers;
+my $proxy;
+
+# Create a custom HTTP::Proxy::BodyFilter::save
+# By default, ::save saves all files
+# This only saves files that have matched the extensions given
+{
+    package CustomSave;
+    use base qw( HTTP::Proxy::BodyFilter::save );
+
+    sub begin {
+        my ( $self, $message ) = @_;
+        $self->SUPER::begin($message) if ($proxy->stash('matched'));
+    }
+
+    sub filter {
+        my ( $self, $dataref ) = @_;
+        $self->SUPER::filter($dataref) if ($proxy->stash('matched'));
+    }
+
+    sub end {
+        my ( $self ) = @_;
+        $self->SUPER::end() if ($proxy->stash('matched'));
+    }
+}
+
+
+# All other modules
+use Getopt::Long;
+use Pod::Usage;
+use File::Slurp;
+use URI::Escape;
+
+# set up variables
+my $mirror_root;
+my $verbose;
+my $help;
+my $port_to_listen;
+my $interface_address_or_hostname;
+my @extensions_to_cache;
+my $tunnel;
+
+# Configure options
+GetOptions(
+    'verbose|v'   => \$verbose,
+    'port|p=i'     => \$port_to_listen,
+    'i=s'          => \$interface_address_or_hostname,
+    'root|r=s'     => \$mirror_root,
+    'extensions|e=s' => \@extensions_to_cache,
+    'tunnel|t'   => \$tunnel,
+    'help|h|?'     => \$help,
+) or pod2usage(1);
+
+# Print usage if requested or if $mirror_root is not defined
+pod2usage(1) 
+    if ($help || (!defined $mirror_root || !@extensions_to_cache));
+
+# Configure extensions
+@extensions_to_cache = split(/,/, join(',', @extensions_to_cache));
+
+# Configure the main proxy object
+$proxy = HTTP::Proxy->new(
+    port => $port_to_listen || 8080,
+    host => $interface_address_or_hostname || undef,
+    engine => 'Legacy', 
+    logmask => $verbose ? FILTERS : PROXY,
+);
+
+$proxy->engine->max_clients(5);
+
+$proxy->push_filter(
+    # By default, only text/* mime types are handled
+    # This includes everything
+    mime => undef,
+
+    # This filter checks to see if a local file of the
+    # same name exists. If not, it goes on with the
+    # remote request
+    request => HTTP::Proxy::HeaderFilter::simple->new(
+        sub {
+            my ( $self, $headers, $message ) = @_;
+
+            return "Not a request"
+              unless $message->isa('HTTP::Request');
+
+            my @path = split('/', $message->uri->path);
+            my $host = shift(@path);
+            my $new_path = join('/', @path);
+            my $file = pop(@path);
+            $file = uri_escape($file);
+
+            $self->proxy->log(HTTP::Proxy::FILTERS, 'Processing', $file);
+            my $selected;
+            if (defined $file && grep { $file =~ /\.$_$/ } @extensions_to_cache) {
+                $proxy->stash(matched => 1);
+                if ( -e "$mirror_root/$file" ) {
+                    $self->proxy->log(HTTP::Proxy::FILTERS, 'Found Cache', $file);
+                    $selected = 'local';
+
+                    my $content;
+
+                    # See if only a range has been requested
+                    my $range = $headers->header('range');
+                    if ($range) {
+                        $self->proxy->log(HTTP::Proxy::FILTERS, 'Range requested', $range);
+                        my ($start, $stop) = ($range =~ /^bytes=(\d+)-(\d+)$/);
+                        open my $fh, '<', "$mirror_root/$file" or die($!);
+                        seek($fh, $start, 0) or die ($!);
+                        my $return_value = read($fh, $content, $stop);
+                        die($!) if !defined $return_value;
+                        close($fh);
+                    } else {
+                        # Or just get the entire contents
+                        $content = read_file("$mirror_root/$file", binmode => ':raw') or die ($!);
+                    }
+
+                    # Build the response
+                    my $content_length = length($content);
+                    my $header = HTTP::Headers->new;
+                    $header->header('Content-Length' => $content_length);
+                    my $response = HTTP::Response->new( 200, 'OK', $header, $content );
+                    $response->request($message);
+                    $self->proxy->response($response);
+                }
+            } else {
+                $file = '/';
+                $proxy->stash(matched => undef);
+            }
+
+            if (!defined $self->proxy->response) {
+                $selected = 'external';
+                if ($tunnel) {
+                    my $new_host = sprintf("http:/%s/%s", $host, $new_path);
+                    $message->uri( $new_host );
+                }
+            }
+
+            $self->proxy->log(HTTP::Proxy::FILTERS, 'Using', "$selected mirror for $file");
+
+        }
+    ),
+
+    # This filter saves a copy of all matched files 
+    response => CustomSave->new(
+        prefix   => $mirror_root,
+        multiple => undef,
+
+        filename => sub {
+            my ( $message ) = @_;
+            my @path = split('/', $message->request->uri->path);
+            my $file = pop(@path);
+            return "$mirror_root/" . uri_escape($file);
+        }
+    ),
+);
+
+$proxy->start;
+
+__END__
+=head1 NAME
+
+automirror - A program to mirror files as you download them.
+
+=head1 SYNOPSIS
+
+automirror_tunnel [options]
+
+ Options:
+   -v, --verbose    Increase verbosity level
+   -p, --port       Port to listen for connections
+   -i, --iface      Listen only in this interface address or hostname
+   -e, --extensions List of file extensions to cache
+   -r, --root       Root of the mirror
+   -t, --tunnel     Tunnel mode
+   -h, --help       Display help
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--verbose>
+
+Increase verbosity level.
+
+=item B<--port>
+
+Port to listen for connections.
+
+B<Defaults> to 8080
+
+=item B<--iface>
+
+Listen only in this interface address or hostname.
+(eg. 192.168.0.1, localhost or centos.intranet.poormen.com)
+
+B<Defaults> to all interfaces
+
+=item B<--extensions>
+
+A list of file extensions to cache. 
+
+For example: --extensions rpm,img
+
+or: -e rpm -e img
+
+=item B<--root>
+
+The directory to save the cached files. 
+
+=item B<--tunnel>
+
+In addition, this program can act as a tunnel for programs such as
+kickstart and anaconda that do not support proxying. If you specify
+a source url as:
+
+	http://proxy:8080/real.server.com/path/to/file
+
+This program will fetch and return the file located at
+
+	http://real.server.com/path/to/file
+
+while still performing the caching functions.
+
+=back
+
+=head1 DESCRIPTION
+
+B<This program> will act as a proxy for a http server, mirroring the 
+files to a specified location as you download them.
+
+This is useful for mirroring package repositories, but only the files
+you've already downloaded.
+
+This script is a B<heavily> modified version of motobói's original script
+which can be found here:
+
+	http://www.perlmonks.org/?node_id=684293 
+
+=cut
+
+=head1 ACKNOWLEDGEMENTS
+
+B<motobói> for the original version
+
+=cut
+
+=head1 CREDITS
+
+B<Joe Topjian> (joe@terrarum.net, http://terrarum.net)
+
+=cut

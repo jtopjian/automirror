@@ -1,0 +1,83 @@
+#!/bin/sh
+#
+# automirror        Startup script for automirror
+# 
+# chkconfig: 345 90 12
+# description: automirror
+#
+
+
+#### BEGIN OPTIONS #########
+
+VERBOSE=1
+TUNNEL=1
+LOGFILE=/var/log/automirror.log
+ROOT=/var/cache/yum/automirror
+EXTENSIONS=rpm,img
+COMMAND="/usr/bin/perl /usr/local/bin/automirror"
+
+##### END OPTIONS #######
+
+# Source function library
+. /etc/rc.d/init.d/functions
+PATH=$PATH:/usr/local/bin
+
+OPTIONS="--root $ROOT --extensions=$EXTENSIONS"
+
+if [ $VERBOSE -eq 1 ]; then
+    OPTIONS="$OPTIONS --verbose"
+fi
+
+if [ $TUNNEL -eq 1 ]; then
+    OPTIONS="$OPTIONS --tunnel"
+fi
+
+OPTIONS="$OPTIONS >> $LOGFILE 2>&1"
+
+# Handle manual control parameters like start, stop, status, restart, etc.
+
+
+start() {
+    echo -n $"Starting automirror daemon: "
+    # cd'ing to /var/lock/subsys is not idea, but proxy engine
+    # creates tmp file in currentdir
+    cd /var/lock/subsys
+    daemon "$COMMAND $OPTIONS &"
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch /var/lock/subsys/automirror
+}
+
+stop() {
+    echo -n $"Stopping automirror: "
+    killproc $COMMAND
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/automirror
+}
+
+case "$1" in
+  start)
+    # Start daemons.
+        start
+    ;;
+
+  stop)
+    # Stop daemons.
+        stop
+    ;;
+  restart)
+      stop
+      start
+    ;;
+
+  status)
+      status $COMMAND
+    ;;
+
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+
