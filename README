@@ -1,20 +1,23 @@
 AUTOMIRROR
 ==========
-
 automirror is a simple Perl proxy that has the ability to save files of
 specific extensions to disk.
 
-It was based off of the script found here:
+It was based off of the script found here: 
+
     http://www.perlmonks.org/?node_id=684293
+
 but has since been heavily modified.
 
 USAGE
 =====
 For information on how to use the script, run
+
     perldoc automirror
 
 I've included a rudimentary sysv rc file that is known to work on CentOS.
-You can edit the options section of this file to configure the script.
+You can edit the options section of this file to configure how automirror
+runs as a service.
 
 A more detailed tutorial can be found at:
     http://terrarum.net/administration/caching-rpms-with-automirror.html
