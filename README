@@ -16,6 +16,10 @@ For information on how to use the script, run
 I've included a rudimentary sysv rc file that is known to work on CentOS.
 You can edit the options section of this file to configure the script.
 
+A more detailed tutorial can be found at:
+    http://terrarum.net/administration/caching-rpms-with-automirror.html
+
+
 REQUIRED MODULES
 ================
 HTTP::Proxy
