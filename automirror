@@ -6,7 +6,6 @@ use strict;
 use HTTP::Proxy qw(:log);
 use HTTP::Proxy::HeaderFilter::simple;
 use HTTP::Proxy::BodyFilter::save;
-use HTTP::Proxy::BodyFilter::simple;
 use HTTP::Response;
 use HTTP::Headers;
 my $proxy;
@@ -15,25 +14,25 @@ my $proxy;
 # By default, ::save saves all files
 # This only saves files that have matched the extensions given
 {
+
     package CustomSave;
     use base qw( HTTP::Proxy::BodyFilter::save );
 
     sub begin {
         my ( $self, $message ) = @_;
-        $self->SUPER::begin($message) if ($proxy->stash('matched'));
+        $self->SUPER::begin($message) if ( $proxy->stash('matched') );
     }
 
     sub filter {
         my ( $self, $dataref ) = @_;
-        $self->SUPER::filter($dataref) if ($proxy->stash('matched'));
+        $self->SUPER::filter($dataref) if ( $proxy->stash('matched') );
     }
 
     sub end {
-        my ( $self ) = @_;
-        $self->SUPER::end() if ($proxy->stash('matched'));
+        my ($self) = @_;
+        $self->SUPER::end() if ( $proxy->stash('matched') );
     }
 }
-
 
 # All other modules
 use Getopt::Long;
@@ -52,33 +51,34 @@ my $tunnel;
 
 # Configure options
 GetOptions(
-    'verbose|v'   => \$verbose,
-    'port|p=i'     => \$port_to_listen,
-    'i=s'          => \$interface_address_or_hostname,
-    'root|r=s'     => \$mirror_root,
+    'verbose|v'      => \$verbose,
+    'port|p=i'       => \$port_to_listen,
+    'i=s'            => \$interface_address_or_hostname,
+    'root|r=s'       => \$mirror_root,
     'extensions|e=s' => \@extensions_to_cache,
-    'tunnel|t'   => \$tunnel,
-    'help|h|?'     => \$help,
+    'tunnel|t'       => \$tunnel,
+    'help|h|?'       => \$help,
 ) or pod2usage(1);
 
 # Print usage if requested or if $mirror_root is not defined
-pod2usage(1) 
-    if ($help || (!defined $mirror_root || !@extensions_to_cache));
+pod2usage(1)
+  if ( $help || ( !defined $mirror_root || !@extensions_to_cache ) );
 
 # Configure extensions
-@extensions_to_cache = split(/,/, join(',', @extensions_to_cache));
+@extensions_to_cache = split( /,/, join( ',', @extensions_to_cache ) );
 
 # Configure the main proxy object
 $proxy = HTTP::Proxy->new(
     port => $port_to_listen || 8080,
     host => $interface_address_or_hostname || undef,
-    engine => 'Legacy', 
+    engine  => 'Legacy',
     logmask => $verbose ? FILTERS : PROXY,
 );
 
 $proxy->engine->max_clients(5);
 
 $proxy->push_filter(
+
     # By default, only text/* mime types are handled
     # This includes everything
     mime => undef,
@@ -93,18 +93,21 @@ $proxy->push_filter(
             return "Not a request"
               unless $message->isa('HTTP::Request');
 
-            my @path = split('/', $message->uri->path);
-            my $host = shift(@path);
-            my $new_path = join('/', @path);
-            my $file = pop(@path);
+            my @path     = split( '/', $message->uri->path );
+            my $host     = shift(@path);
+            my $new_path = join( '/', @path );
+            my $file     = pop(@path);
             $file = uri_escape($file);
 
-            $self->proxy->log(HTTP::Proxy::FILTERS, 'Processing', $file);
+            $self->proxy->log( HTTP::Proxy::FILTERS, 'Processing', $file );
             my $selected;
-            if (defined $file && grep { $file =~ /\.$_$/ } @extensions_to_cache) {
-                $proxy->stash(matched => 1);
+            if ( defined $file && grep { $file =~ /\.$_$/ }
+                @extensions_to_cache )
+            {
+                $proxy->stash( matched => 1 );
                 if ( -e "$mirror_root/$file" ) {
-                    $self->proxy->log(HTTP::Proxy::FILTERS, 'Found Cache', $file);
+                    $self->proxy->log( HTTP::Proxy::FILTERS, 'Found Cache',
+                        $file );
                     $selected = 'local';
 
                     my $content;
@@ -112,52 +115,61 @@ $proxy->push_filter(
                     # See if only a range has been requested
                     my $range = $headers->header('range');
                     if ($range) {
-                        $self->proxy->log(HTTP::Proxy::FILTERS, 'Range requested', $range);
-                        my ($start, $stop) = ($range =~ /^bytes=(\d+)-(\d+)$/);
+                        $self->proxy->log( HTTP::Proxy::FILTERS,
+                            'Range requested', $range );
+                        my ( $start, $stop ) =
+                          ( $range =~ /^bytes=(\d+)-(\d+)$/ );
                         open my $fh, '<', "$mirror_root/$file" or die($!);
-                        seek($fh, $start, 0) or die ($!);
-                        my $return_value = read($fh, $content, $stop);
+                        seek( $fh, $start, 0 ) or die($!);
+                        my $return_value = read( $fh, $content, $stop );
                         die($!) if !defined $return_value;
                         close($fh);
-                    } else {
+                    }
+                    else {
+
                         # Or just get the entire contents
-                        $content = read_file("$mirror_root/$file", binmode => ':raw') or die ($!);
+                        $content =
+                          read_file( "$mirror_root/$file", binmode => ':raw' )
+                          or die($!);
                     }
 
                     # Build the response
                     my $content_length = length($content);
-                    my $header = HTTP::Headers->new;
-                    $header->header('Content-Length' => $content_length);
-                    my $response = HTTP::Response->new( 200, 'OK', $header, $content );
+                    my $header         = HTTP::Headers->new;
+                    $header->header( 'Content-Length' => $content_length );
+                    my $response =
+                      HTTP::Response->new( 200, 'OK', $header, $content );
                     $response->request($message);
                     $self->proxy->response($response);
                 }
-            } else {
+            }
+            else {
                 $file = '/';
-                $proxy->stash(matched => undef);
+                $proxy->stash( matched => undef );
             }
 
-            if (!defined $self->proxy->response) {
+            if ( !defined $self->proxy->response ) {
                 $selected = 'external';
                 if ($tunnel) {
-                    my $new_host = sprintf("http:/%s/%s", $host, $new_path);
-                    $message->uri( $new_host );
+                    my $new_host = sprintf( "http:/%s/%s", $host, $new_path );
+                    $message->uri($new_host);
                 }
             }
 
-            $self->proxy->log(HTTP::Proxy::FILTERS, 'Using', "$selected mirror for $file");
+            $self->proxy->log( HTTP::Proxy::FILTERS, 'Using',
+                "$selected mirror for $file" );
 
         }
     ),
 
-    # This filter saves a copy of all matched files 
+    # This filter saves a copy of all matched files
     response => CustomSave->new(
         prefix   => $mirror_root,
         multiple => undef,
 
         filename => sub {
-            my ( $message ) = @_;
-            my @path = split('/', $message->request->uri->path);
+            my ($message) = @_;
+            my @path = split( '/', $message->request->uri->path );
             my $file = pop(@path);
             return "$mirror_root/" . uri_escape($file);
         }
@@ -167,6 +179,7 @@ $proxy->push_filter(
 $proxy->start;
 
 __END__
+
 =head1 NAME
 
 automirror - A program to mirror files as you download them.
