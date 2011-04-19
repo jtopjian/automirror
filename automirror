@@ -123,14 +123,17 @@ $proxy->push_filter(
                         # If the range was not properly found,
                         # something might be wrong with the file.
                         # Break and re-download.
-                        $selected = 'external' if ( !defined $start );
+                        if ( !defined $start ) {
+                            $selected = 'external';
+                        }
+                        else {
+                            open my $fh, '<', "$mirror_root/$file" or die($!);
+                            seek( $fh, $start, 0 ) or die($!);
+                            my $return_value = read( $fh, $content, $stop );
 
-                        open my $fh, '<', "$mirror_root/$file" or die($!);
-                        seek( $fh, $start, 0 ) or die($!);
-                        my $return_value = read( $fh, $content, $stop );
-
-                        die($!) if !defined $return_value;
-                        close($fh);
+                            die($!) if !defined $return_value;
+                            close($fh);
+                        }
                     }
                     else {
 
