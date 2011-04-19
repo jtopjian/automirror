@@ -119,9 +119,16 @@ $proxy->push_filter(
                             'Range requested', $range );
                         my ( $start, $stop ) =
                           ( $range =~ /^bytes=(\d+)-(\d+)$/ );
+
+                        # If the range was not properly found,
+                        # something might be wrong with the file.
+                        # Break and re-download.
+                        $selected = 'external' if ( !defined $start );
+
                         open my $fh, '<', "$mirror_root/$file" or die($!);
                         seek( $fh, $start, 0 ) or die($!);
                         my $return_value = read( $fh, $content, $stop );
+
                         die($!) if !defined $return_value;
                         close($fh);
                     }
@@ -134,13 +141,15 @@ $proxy->push_filter(
                     }
 
                     # Build the response
-                    my $content_length = length($content);
-                    my $header         = HTTP::Headers->new;
-                    $header->header( 'Content-Length' => $content_length );
-                    my $response =
-                      HTTP::Response->new( 200, 'OK', $header, $content );
-                    $response->request($message);
-                    $self->proxy->response($response);
+                    if ( $selected eq 'local' ) {
+                        my $content_length = length($content);
+                        my $header         = HTTP::Headers->new;
+                        $header->header( 'Content-Length' => $content_length );
+                        my $response =
+                          HTTP::Response->new( 200, 'OK', $header, $content );
+                        $response->request($message);
+                        $self->proxy->response($response);
+                    }
                 }
             }
             else {
