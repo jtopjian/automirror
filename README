@@ -32,11 +32,22 @@ GetOpt::Long
 URI::Escape
 File::Slurp
 
-NOTE
-====
+KNOWN ISSUES AND LIMITATIONS
+============================
 It should be important to note that development of automirror has so far been
 geared toward CentOS environments. That's not to say it won't work in other
 environments, but it just has not been tested.
 
+automirror can use a lot of memory depending on how large the cached file is.
+I have tried various methods of cutting down on memory usage, but so far
+the only method I have been able to get working with yum is read_file using
+a scalar reference. Methods such as using sysread in the HTTP::Response and
+send_file with HTTP::Daemon have proven troublesome.
+
+Although streaming data over network protocols is not my strong point, I can
+understand if high memory usage is kind of normal. This program caches and
+sends large binary files at very high speeds -- for the system to keep up,
+a lot of memory will need to be used. I can be wrong, though, and if you
+have any input to this issue, please let me know.
 
 Joe Topjian, joe@terrarum.net, http://terrarum.net

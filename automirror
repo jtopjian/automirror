@@ -138,8 +138,7 @@ $proxy->push_filter(
                     else {
 
                         # Or just get the entire contents
-                        $content =
-                          read_file( "$mirror_root/$file", binmode => ':raw' )
+                          read_file( "$mirror_root/$file", binmode => ':raw', buf_ref => \$content )
                           or die($!);
                     }
 
